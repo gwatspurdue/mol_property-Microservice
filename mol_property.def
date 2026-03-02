@@ -1,0 +1,90 @@
+BootStrap: docker
+From: continuumio/miniconda3:latest
+
+%labels
+    Author "Gavin Watson"
+    Version "1.1.0"
+    Description "mol_property Microservice - Property prediction"
+    HelpURL "https://github.com/gwatspurdue/mol_property-Microservice"
+
+%help
+    mol_property Microservice Container
+    
+    This container runs a FastAPI microservice for predicting small molecule properties.
+    
+    Usage:
+        singularity run mol_property.sif
+        singularity run --env PORT=9000 mol_property.sif
+        singularity shell mol_property.sif
+    
+    Environment Variables:
+        PORT: Server port (default: 8000)
+        HOST: Server host (default: 0.0.0.0)
+        RELOAD: Enable auto-reload (default: true)
+
+%environment
+    export PATH="/opt/conda/bin:$PATH"
+    export PYTHONUNBUFFERED=1
+    export PYTHONPATH=/app
+    export PORT=8000
+    export HOST=0.0.0.0
+    export DOCKER_BUILDKIT=1
+    export HOME=/tmp
+
+%files
+    mol_property /app/mol_property
+    handler.py /app/handler.py
+    environment.yml /app/environment.yml
+    main.py /app/main.py
+    setup.py /app/setup.py
+
+%post
+    mkdir -p /app
+
+    apt-get update && apt-get install -y git
+    
+    # Create conda environment from environment.yml
+    conda env create -f /app/environment.yml -y
+
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate mol_property-microservice
+
+    # Build drivers
+    chmod +w /app /app/mol_property
+    python setup.py install
+    cd /
+    
+    # Clean conda cache to reduce image size
+    conda clean -afy
+
+%runscript
+    #!/bin/bash
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate mol_property-microservice
+    cd /app || exit 1
+    python3 main.py "$@"
+
+%startscript
+    #!/bin/bash
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate mol_property-microservice
+    cd /app || exit 1
+    
+    # Set defaults if not provided
+    PORT=${PORT:-8000}
+    
+    echo "========================================="
+    echo "mol_property Microservice"
+    echo "========================================="
+    echo "Starting FastAPI server..."
+    echo "Port: $PORT"
+    echo "========================================="
+    echo ""
+    
+    # Run uvicorn
+    python3 main.py "$@"
+
+%test
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate mol_property-microservice
+    python3 -c "from rdkit import Chem; from mol_property import property_api; print('All dependencies installed successfully!')"
